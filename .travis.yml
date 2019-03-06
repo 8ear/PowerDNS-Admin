@@ -2,6 +2,7 @@ language: python
 python:
   - "3.5.2"
 before_install:
+  - make update
   - sudo apt-key adv --fetch-keys http://dl.yarnpkg.com/debian/pubkey.gpg
   - echo "deb http://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
   - travis_retry sudo apt-get update
@@ -18,8 +19,8 @@ before_script:
   - flask assets build
 script:
   - sh run_travis.sh
-  - sh docker_build.sh
-  - sh docker_push.sh
+  - make build
+  - make push
 cache:
   yarn: true
 services:
