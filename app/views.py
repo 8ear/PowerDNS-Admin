@@ -23,6 +23,7 @@ from app import app, login_manager, csrf
 from app.lib import utils
 from app.oauth import github_oauth, google_oauth, oidc_oauth
 from app.decorators import admin_role_required, operator_role_required, can_access_domain, can_configure_dnssec, can_create_domain
+from yaml import Loader, load
 
 if app.config['SAML_ENABLED']:
     from onelogin.saml2.utils import OneLogin_Saml2_Utils
@@ -107,7 +108,9 @@ def login_via_authorization_header(request):
             return None
         user = User(username=username, password=password, plain_text_password=password)
         try:
-            auth = user.is_validate(method='LOCAL', src_ip=request.remote_addr)
+            auth_method = request.args.get('auth_method', 'LOCAL')
+            auth_method = 'LDAP' if auth_method != 'LOCAL' else 'LOCAL'
+            auth = user.is_validate(method=auth_method, src_ip=request.remote_addr)
             if auth == False:
                 return None
             else:
@@ -130,11 +133,13 @@ def http_bad_request(e):
 def http_unauthorized(e):
     return redirect(url_for('error', code=401))
 
-
 @app.errorhandler(404)
-def http_internal_server_error(e):
-    return redirect(url_for('error', code=404))
-
+@app.errorhandler(405)
+def _handle_api_error(ex):
+    if request.path.startswith('/api/'):
+        return json.dumps({"msg": "NotFound"}), 404
+    else:
+        return redirect(url_for('error', code=404))
 
 @app.errorhandler(500)
 def http_page_not_found(e):
@@ -149,6 +154,22 @@ def error(code, msg=None):
     else:
         return render_template('errors/404.html'), 404
 
+@app.route('/swagger', methods=['GET'])
+def swagger_spec():
+    try:
+        dir_path = os.path.dirname(os.path.abspath(__file__))
+        spec_path = os.path.join(dir_path, "swagger-spec.yaml")
+        spec = open(spec_path,'r')
+        loaded_spec = load(spec.read(), Loader)
+    except Exception as e:
+        logging.error('Cannot view swagger spec. Error: {0}'.format(e))
+        logging.debug(traceback.format_exc())
+        return redirect(url_for('error', code=500))
+
+    resp = make_response(json.dumps(loaded_spec), 200)
+    resp.headers['Content-Type'] = 'application/json'
+
+    return resp
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -272,27 +293,42 @@ def saml_authorized():
         email_attribute_name = app.config.get('SAML_ATTRIBUTE_EMAIL', 'email')
         givenname_attribute_name = app.config.get('SAML_ATTRIBUTE_GIVENNAME', 'givenname')
         surname_attribute_name = app.config.get('SAML_ATTRIBUTE_SURNAME', 'surname')
+        name_attribute_name = app.config.get('SAML_ATTRIBUTE_NAME', None)
         account_attribute_name = app.config.get('SAML_ATTRIBUTE_ACCOUNT', None)
         admin_attribute_name = app.config.get('SAML_ATTRIBUTE_ADMIN', None)
+        group_attribute_name = app.config.get('SAML_ATTRIBUTE_GROUP', None)
+        admin_group_name = app.config.get('SAML_GROUP_ADMIN_NAME', None)
+        group_to_account_mapping = create_group_to_account_mapping()
+
         if email_attribute_name in session['samlUserdata']:
             user.email = session['samlUserdata'][email_attribute_name][0].lower()
         if givenname_attribute_name in session['samlUserdata']:
             user.firstname = session['samlUserdata'][givenname_attribute_name][0]
         if surname_attribute_name in session['samlUserdata']:
             user.lastname = session['samlUserdata'][surname_attribute_name][0]
-        if admin_attribute_name:
+        if name_attribute_name in session['samlUserdata']:
+            name = session['samlUserdata'][name_attribute_name][0].split(' ')
+            user.firstname = name[0]
+            user.lastname = ' '.join(name[1:])
+
+        if group_attribute_name:
+            user_groups = session['samlUserdata'].get(group_attribute_name, [])
+        else:
+            user_groups = []
+        if admin_attribute_name or group_attribute_name:
             user_accounts = set(user.get_account())
             saml_accounts = []
+            for group_mapping in group_to_account_mapping:
+                mapping = group_mapping.split('=')
+                group = mapping[0]
+                account_name = mapping[1]
+
+                if group in user_groups:
+                    account = handle_account(account_name)
+                    saml_accounts.append(account)
+
             for account_name in session['samlUserdata'].get(account_attribute_name, []):
-                clean_name = ''.join(c for c in account_name.lower() if c in "abcdefghijklmnopqrstuvwxyz0123456789")
-                if len(clean_name) > Account.name.type.length:
-                    logging.error("Account name {0} too long. Truncated.".format(clean_name))
-                account = Account.query.filter_by(name=clean_name).first()
-                if not account:
-                    account = Account(name=clean_name.lower(), description='', contact='', mail='')
-                    account.create_account()
-                    history = History(msg='Account {0} created'.format(account.name), created_by='SAML Assertion')
-                    history.add()
+                account = handle_account(account_name)
                 saml_accounts.append(account)
             saml_accounts = set(saml_accounts)
             for account in saml_accounts - user_accounts:
@@ -303,17 +339,13 @@ def saml_authorized():
                 account.remove_user(user)
                 history = History(msg='Removing {0} from account {1}'.format(user.username, account.name), created_by='SAML Assertion')
                 history.add()
-        if admin_attribute_name:
-          if 'true' in session['samlUserdata'].get(admin_attribute_name, []):
-            admin_role = Role.query.filter_by(name='Administrator').first().id
-            if user.role_id != admin_role:
-                user.role_id = admin_role
-                history = History(msg='Promoting {0} to administrator'.format(user.username), created_by='SAML Assertion')
-                history.add()
-          else:
-            user_role = Role.query.filter_by(name='User').first().id
-            if user.role_id != user_role:
-                user.role_id = user_role
+        if admin_attribute_name and 'true' in session['samlUserdata'].get(admin_attribute_name, []):
+            uplift_to_admin(user)
+        elif admin_group_name in user_groups:
+            uplift_to_admin(user)
+        elif admin_attribute_name or group_attribute_name:
+            if user.role.name != 'User':
+                user.role_id = Role.query.filter_by(name='User').first().id
                 history = History(msg='Demoting {0} to user'.format(user.username), created_by='SAML Assertion')
                 history.add()
         user.plain_text_password = None
@@ -322,7 +354,36 @@ def saml_authorized():
         login_user(user, remember=False)
         return redirect(url_for('index'))
     else:
-        return  render_template('errors/SAML.html', errors=errors)
+        return render_template('errors/SAML.html', errors=errors)
+
+
+def create_group_to_account_mapping():
+    group_to_account_mapping_string = app.config.get('SAML_GROUP_TO_ACCOUNT_MAPPING', None)
+    if group_to_account_mapping_string and len(group_to_account_mapping_string.strip()) > 0:
+        group_to_account_mapping = group_to_account_mapping_string.split(',')
+    else:
+        group_to_account_mapping = []
+    return group_to_account_mapping
+
+
+def handle_account(account_name):
+    clean_name = ''.join(c for c in account_name.lower() if c in "abcdefghijklmnopqrstuvwxyz0123456789")
+    if len(clean_name) > Account.name.type.length:
+        logging.error("Account name {0} too long. Truncated.".format(clean_name))
+    account = Account.query.filter_by(name=clean_name).first()
+    if not account:
+        account = Account(name=clean_name.lower(), description='', contact='', mail='')
+        account.create_account()
+        history = History(msg='Account {0} created'.format(account.name), created_by='SAML Assertion')
+        history.add()
+    return account
+
+
+def uplift_to_admin(user):
+    if user.role.name != 'Administrator':
+        user.role_id = Role.query.filter_by(name='Administrator').first().id
+        history = History(msg='Promoting {0} to administrator'.format(user.username), created_by='SAML Assertion')
+        history.add()
 
 
 @login_manager.unauthorized_handler
@@ -1816,7 +1877,6 @@ def dyndns_update():
             history.add()
 
     return render_template('dyndns.html', response=response), 200
-
 
 @app.route('/', methods=['GET', 'POST'])
 @login_required

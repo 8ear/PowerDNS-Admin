@@ -1,7 +1,7 @@
 
 update:
 	# Update to Mainstream master
-	git remote add upstream https://github.com/ngoduykhanh/PowerDNS-Admin.git
+	#git remote add upstream https://github.com/ngoduykhanh/PowerDNS-Admin.git
 	git fetch upstream
 	git checkout master
 	git merge upstream/master
