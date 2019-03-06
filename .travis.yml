@@ -18,7 +18,10 @@ before_script:
   - flask assets build
 script:
   - sh run_travis.sh
+  - sh docker_build.sh
+  - sh docker_push.sh
 cache:
   yarn: true
 services:
   - mysql
+  - docker
