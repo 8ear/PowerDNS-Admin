@@ -3,6 +3,7 @@ set -x
 
 [ -z "$CONTAINER_NAME" ] && CONTAINER_NAME=powerdns
 [ -z "$SLUG" ] && SLUG=8ear
+[ -z "$DOCKER_USERNAME" ] && DOCKER_USERNAME=$SLUG
 
 # load variables
 source .env
@@ -31,7 +32,11 @@ EOF
 
 
 func_push(){
-	docker push $SLUG/$CONTAINER_NAME:latest
+	[ -z "$DOCKER_PASSWORD" ] && echo "No DOCKER_PASSWORD var is set. Exit now." && exit 1
+
+	echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+	
+	docker push "$SLUG"/"$CONTAINER_NAME":latest
 }
 
 
