@@ -11,9 +11,12 @@ SLUG:=8ear
 	
 build:
 	docker build -f docker/PowerDNS-Admin/Dockerfile \
+		--build-args=" \
+			ENVIRONMENT=${ENVIRONMENT} \
+		" \
 		-t $(SLUG)/$(CONTAINERNAME):latest \
 		-t powerdns-admin:latest \
-		./docker/PowerDNS-Admin/
+		.
 
 push:
 	docker push $(SLUG)/$(CONTAINERNAME):latest
