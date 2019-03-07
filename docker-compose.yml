@@ -7,7 +7,7 @@ services:
       dockerfile: docker/PowerDNS-Admin/Dockerfile
       args:
         - ENVIRONMENT=${ENVIRONMENT}
-    image: powerdns-admin
+    image: 8ear/powerdns-admin
     container_name: powerdns-admin
     mem_limit: 256M
     memswap_limit: 256M
