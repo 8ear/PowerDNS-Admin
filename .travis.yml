@@ -1,11 +1,11 @@
 language: minimal
 # Project Variables:
 #   SLUG
-#   CONTAINER-NAME
+#   CONTAINER_NAME
 
 script:
   - make update
-  - make build SLUG=$SLUG CONTAINERNAME=$CONTAINER-NAME
+  - make build SLUG=$SLUG CONTAINERNAME=$CONTAINER_NAME
   - docker-compose -f docker-compose-test.yml up --exit-code-from powerdns-admin --abort-on-container-exit
   - make push
 services:
