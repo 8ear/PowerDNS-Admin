@@ -3,10 +3,14 @@ language: minimal
 #   SLUG
 #   CONTAINER_NAME
 
+before_script:
+  - bash docker_helper.sh update
+
 script:
-  - make update
-  - make build SLUG=$SLUG CONTAINERNAME=$CONTAINER_NAME
-  - docker-compose -f docker-compose-test.yml up --exit-code-from powerdns-admin --abort-on-container-exit
-  - make push
+  - docker-compose -f docker-compose-test.yml -f docker-compose.override.yml up --exit-code-from powerdns-admin --abort-on-container-exit
+  - bash docker_helper.sh add_docker-compose.override.yml
+  - docker-compose build
+  - bash docker_helper.sh push
+
 services:
   - docker
