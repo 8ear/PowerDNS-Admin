@@ -29,6 +29,12 @@ Step 2: Build docker images
 
 ```$ docker-compose build```
 
+**OR** use an docker-compose.override.yml file:
+
+`bash docker_helper.sh add_docker-compose.override.yml`
+
+and edit `docker-compose.override.yml`
+
 Step 3: Start docker containers
 
 ```$ docker-compose up```
