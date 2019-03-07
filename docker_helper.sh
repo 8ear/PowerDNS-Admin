@@ -37,6 +37,7 @@ func_push(){
 	echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 	
 	docker push "$SLUG"/"$CONTAINER_NAME":latest
+	curl https://cloud.docker.com/api/build/v1/source/c2d8dbf0-9162-493c-8b62-cde5e44dce47/trigger/72401227-2da5-4889-b29c-5aeca1a57929/call/
 }
 
 
