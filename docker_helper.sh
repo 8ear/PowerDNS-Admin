@@ -1,7 +1,7 @@
 #!/bin/bash
 set -x
 
-[ -z "$CONTAINER_NAME" ] && CONTAINER_NAME=powerdns
+[ -z "$CONTAINER_NAME" ] && CONTAINER_NAME=powerdns-admin
 [ -z "$SLUG" ] && SLUG=8ear
 [ -z "$DOCKER_USERNAME" ] && DOCKER_USERNAME=$SLUG
 
@@ -25,13 +25,12 @@ version: "2.1"
 services:
   powerdns-admin:
     image: ${SLUG}/${CONTAINER_NAME}
-		ports:
-		- "8080:9191"
+		ports: "8080:9191"
 
 	pdns-server:
     ports:
-    - "53:53"
-    - "53:53/udp"
+      - "53:53"
+      - "53:53/udp"
 
 EOF
 
