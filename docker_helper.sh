@@ -25,6 +25,13 @@ version: "2.1"
 services:
   powerdns-admin:
     image: ${SLUG}/${CONTAINER_NAME}
+		ports:
+		- "8080:9191"
+
+	pdns-server:
+    ports:
+    - "53:53"
+    - "53:53/udp"
 
 EOF
 
