@@ -4,10 +4,10 @@ language: minimal
 #   CONTAINER_NAME
 
 script:
-  - docker-compose -f docker-compose-test.yml up --exit-code-from powerdns-admin --abort-on-container-exit
+  #- docker-compose -f docker-compose-test.yml up --exit-code-from powerdns-admin --abort-on-container-exit
   
   - bash docker_helper.sh add_docker-compose.override.yml
-  - docker-compose build
+  - docker-compose -f docker-compose.yml -f docker-compose.override.yml build powerdns-admin
   - bash docker_helper.sh push
 
 services:
